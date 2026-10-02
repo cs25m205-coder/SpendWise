@@ -1,9 +1,12 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
 from app.models import Account, Category, Transaction, User
+from app.schemas import TransactionCreate, TransactionUpdate
 
 
 router = APIRouter(
@@ -14,16 +17,12 @@ router = APIRouter(
 
 @router.post("/")
 def create_transaction(
-    description: str,
-    amount: float,
-    transaction_type: str,
-    account_id: int,
-    category_id: int,
+    transaction_data: TransactionCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     account = db.query(Account).filter(
-        Account.id == account_id,
+        Account.id == transaction_data.account_id,
         Account.user_id == current_user.id
     ).first()
 
@@ -34,7 +33,7 @@ def create_transaction(
         )
 
     category = db.query(Category).filter(
-        Category.id == category_id
+        Category.id == transaction_data.category_id
     ).first()
 
     if not category:
@@ -44,18 +43,35 @@ def create_transaction(
         )
 
     transaction = Transaction(
-        description=description,
-        amount=amount,
-        transaction_type=transaction_type,
-        account_id=account_id,
-        category_id=category_id
+        description=transaction_data.description,
+        amount=transaction_data.amount,
+        transaction_type=transaction_data.transaction_type,
+        account_id=transaction_data.account_id,
+        category_id=transaction_data.category_id
     )
 
     db.add(transaction)
+
+    amount = Decimal(str(transaction_data.amount))
+
+    if transaction_data.transaction_type == "expense":
+
+        if account.balance < amount:
+            raise HTTPException(
+                status_code=400,
+                detail="Insufficient balance"
+            )
+
+        account.balance -= amount
+
+    elif transaction_data.transaction_type == "income":
+        account.balance += amount
+
     db.commit()
     db.refresh(transaction)
 
     return transaction
+
 
 @router.get("/")
 def get_transactions(
@@ -75,11 +91,7 @@ def get_transactions(
 @router.put("/{transaction_id}")
 def update_transaction(
     transaction_id: int,
-    description: str,
-    amount: float,
-    transaction_type: str,
-    account_id: int,
-    category_id: int,
+    transaction_data: TransactionUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -99,21 +111,24 @@ def update_transaction(
             detail="Transaction not found"
         )
 
-    # Make sure the new account also belongs to the user
-    account = db.query(Account).filter(
-        Account.id == account_id,
+    old_account = db.query(Account).filter(
+        Account.id == transaction.account_id,
         Account.user_id == current_user.id
     ).first()
 
-    if not account:
+    new_account = db.query(Account).filter(
+        Account.id == transaction_data.account_id,
+        Account.user_id == current_user.id
+    ).first()
+
+    if not new_account:
         raise HTTPException(
             status_code=404,
             detail="Account not found"
         )
 
-    # Make sure the category exists
     category = db.query(Category).filter(
-        Category.id == category_id
+        Category.id == transaction_data.category_id
     ).first()
 
     if not category:
@@ -122,16 +137,36 @@ def update_transaction(
             detail="Category not found"
         )
 
-    transaction.description = description
-    transaction.amount = amount
-    transaction.transaction_type = transaction_type
-    transaction.account_id = account_id
-    transaction.category_id = category_id
+    # Reverse the old transaction
+    old_amount = Decimal(str(transaction.amount))
+
+    if transaction.transaction_type == "expense":
+        old_account.balance += old_amount
+
+    elif transaction.transaction_type == "income":
+        old_account.balance -= old_amount
+
+    # Apply the new transaction
+    new_amount = Decimal(str(transaction_data.amount))
+
+    if transaction_data.transaction_type == "expense":
+        new_account.balance -= new_amount
+
+    elif transaction_data.transaction_type == "income":
+        new_account.balance += new_amount
+
+    # Update transaction fields
+    transaction.description = transaction_data.description
+    transaction.amount = transaction_data.amount
+    transaction.transaction_type = transaction_data.transaction_type
+    transaction.account_id = transaction_data.account_id
+    transaction.category_id = transaction_data.category_id
 
     db.commit()
     db.refresh(transaction)
 
     return transaction
+
 
 @router.delete("/{transaction_id}")
 def delete_transaction(
@@ -155,7 +190,22 @@ def delete_transaction(
             detail="Transaction not found"
         )
 
+    account = db.query(Account).filter(
+        Account.id == transaction.account_id,
+        Account.user_id == current_user.id
+    ).first()
+
+    amount = Decimal(str(transaction.amount))
+
+    # Reverse the transaction before deleting it
+    if transaction.transaction_type == "expense":
+        account.balance += amount
+
+    elif transaction.transaction_type == "income":
+        account.balance -= amount
+
     db.delete(transaction)
+
     db.commit()
 
     return {

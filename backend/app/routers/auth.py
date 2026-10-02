@@ -4,19 +4,22 @@ from sqlalchemy.orm import Session
 from app.auth import hash_password, verify_password, create_access_token
 from app.database import get_db
 from app.models import User
+from app.schemas import LoginRequest, RegisterRequest
 
-router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+router = APIRouter(
+    prefix="/auth",
+    tags=["Authentication"]
+)
 
 
 @router.post("/register")
 def register(
-    name: str,
-    email: str,
-    password: str,
+    request: RegisterRequest,
     db: Session = Depends(get_db)
 ):
     existing_user = db.query(User).filter(
-        User.email == email
+        User.email == request.email
     ).first()
 
     if existing_user:
@@ -26,9 +29,9 @@ def register(
         )
 
     user = User(
-        name=name,
-        email=email,
-        hashed_password=hash_password(password)
+        name=request.name,
+        email=request.email,
+        hashed_password=hash_password(request.password)
     )
 
     db.add(user)
@@ -40,14 +43,14 @@ def register(
         "user_id": user.id
     }
 
+
 @router.post("/login")
 def login(
-    email: str,
-    password: str,
+    request: LoginRequest,
     db: Session = Depends(get_db)
 ):
     user = db.query(User).filter(
-        User.email == email
+        User.email == request.email
     ).first()
 
     if not user:
@@ -56,7 +59,10 @@ def login(
             detail="Invalid email or password"
         )
 
-    if not verify_password(password, user.hashed_password):
+    if not verify_password(
+        request.password,
+        user.hashed_password
+    ):
         raise HTTPException(
             status_code=401,
             detail="Invalid email or password"

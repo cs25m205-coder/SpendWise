@@ -1,16 +1,33 @@
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+
+import Login from './pages/Login'
+import Register from './pages/Register'
+import Dashboard from './pages/Dashboard'
+
 function App() {
   return (
-    <div className="container mt-5">
-      <h1 className="text-primary">SpendWise</h1>
+    <BrowserRouter>
 
-      <p className="lead">
-        Personal Finance Management System
-      </p>
+      <Routes>
 
-      <button className="btn btn-primary">
-        Get Started
-      </button>
-    </div>
+        <Route
+          path="/login"
+          element={<Login />}
+        />
+
+        <Route
+          path="/register"
+          element={<Register />}
+        />
+
+        <Route
+          path="/dashboard"
+          element={<Dashboard />}
+        />
+
+      </Routes>
+
+    </BrowserRouter>
   )
 }
 

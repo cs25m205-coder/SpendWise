@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_user
 from app.database import get_db
 from app.models import Account, User
+from app.schemas import AccountCreate, AccountUpdate
 
 
 router = APIRouter(
@@ -14,16 +15,14 @@ router = APIRouter(
 
 @router.post("/")
 def create_account(
-    name: str,
-    account_type: str,
-    balance: float = 0,
+    account_data: AccountCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     account = Account(
-        name=name,
-        account_type=account_type,
-        balance=balance,
+        name=account_data.name,
+        account_type=account_data.account_type,
+        balance=account_data.balance,
         user_id=current_user.id
     )
 
@@ -32,6 +31,8 @@ def create_account(
     db.refresh(account)
 
     return account
+
+
 @router.get("/")
 def get_accounts(
     db: Session = Depends(get_db),
@@ -43,12 +44,11 @@ def get_accounts(
 
     return accounts
 
+
 @router.put("/{account_id}")
 def update_account(
     account_id: int,
-    name: str,
-    account_type: str,
-    balance: float,
+    account_data: AccountUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -63,14 +63,16 @@ def update_account(
             detail="Account not found"
         )
 
-    account.name = name
-    account.account_type = account_type
-    account.balance = balance
+    account.name = account_data.name
+    account.account_type = account_data.account_type
+    account.balance = account_data.balance
 
     db.commit()
     db.refresh(account)
 
     return account
+
+
 @router.delete("/{account_id}")
 def delete_account(
     account_id: int,
